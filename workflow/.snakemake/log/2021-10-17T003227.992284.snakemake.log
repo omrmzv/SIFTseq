@@ -1,0 +1,7 @@
+Building DAG of jobs...
+MissingInputException in line 18 of /local/workdir/apc88/COFEESEQ/workflow/rules/metagenomics/C_poor_abundances.smk:
+Missing input files for rule hs_blastn_wgbs_cpoor:
+logs/grammy/grammy_prompts_CT
+databases/blast/NCBIGenomes06.gis.taxids
+databases/blast/CT_conversion/NCBIGenomes06_CT.fna
+databases/blast/GA_conversion/NCBIGenomes06_GA.fna

@@ -1,0 +1,4 @@
+Building DAG of jobs...
+MissingInputException in line 13 of /local/workdir/apc88/COFEESEQ/workflow/rules/alignment/trim.smk:
+Missing input files for rule trim:
+/workdir/apc88/WGBS_pipeline/references/adapter_sequences/adapters_srsly.fa

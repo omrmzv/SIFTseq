@@ -1,0 +1,5 @@
+Building DAG of jobs...
+MissingInputException in line 22 of /local/workdir/apc88/COFEESEQ/workflow/rules/metagenomics/decontaminate_unmapped.smk:
+Missing input files for rule subset_FQ:
+Data/samples/CFS-BS-P-SPSS-340_R2.fastq.gz
+Data/samples/CFS-BS-P-SPSS-340_R1.fastq.gz

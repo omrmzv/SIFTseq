@@ -1,0 +1,291 @@
+"""
+Written by Alexandre Pellan Cheng 2021
+COntamination FrEE SEQuencing COFEE-SEQ pipeline.
+
+This file is the motherboard of the operation. All softwares,
+paths, variables and functions are defined here.
+"""
+
+from natsort import natsorted
+import itertools
+from snakemake.utils import validate, min_version
+import os
+
+min_version("5.1.2")
+
+################################################################################
+# CONFIG FILE
+################################################################################
+configfile: '/workdir/apc88/COFEESEQ/config/config.yaml'
+
+################################################################################
+# FUNCTIONS
+################################################################################
+def string_split(string, delimiter, number_of_splits):
+    s=string.split(delimiter, number_of_splits)
+    return(s)
+
+def get_fastq_reads(wcrds):
+    """
+    We get the FQs based on if we got SE or PE
+    """
+    with open(SEQUENCING_PREP_TABLE) as f:
+        next(f)
+        for line in f:
+            sample_name, prep_type, seq_mode, abundance_control, sample_type, seq_type = line.strip().split('\t')
+            if str(wcrds.sample) == sample_name:
+                seq = seq_mode.split('x')[0]
+                prep = prep_type
+    if seq == '1': #single-end
+        return[CLUSTER+config['DATA']+'samples/{sample}_R1.fastq.gz', CLUSTER+config['DATA']+'samples/{sample}_R1.fastq.gz'] #second R1 is a dumb placeholder
+    if seq == '2': #paired-end
+        return[CLUSTER+config['DATA']+'samples/{sample}_R1.fastq.gz', CLUSTER+config['DATA']+'samples/{sample}_R2.fastq.gz']
+
+    raise(ValueError('Could not figure paired end or single end'))
+
+def get_sample_info(wcrds):
+    """
+    We get the FQs based on if we got SE or PE
+    """
+    with open(SEQUENCING_PREP_TABLE) as f:
+        next(f)
+        for line in f:
+            sample_name, prep_type, seq_mode, abundance_control, sample_type, seq_type = line.strip().split('\t')
+            if str(wcrds.sample) == sample_name:
+                return[sample_name, prep_type, seq_mode, abundance_control, sample_type, seq_type]
+
+def get_reference_genome(wcrds):
+    sample_name, prep_type, seq_mode, abundance_control, sample_type, seq_type = get_sample_info(wcrds)
+    if sample_type == "hg19":
+        if seq_type == "bisulfite":
+            dir = HG19METH
+        if seq_type == "standard":
+            dir = HG19STD
+    if sample_type == "microbial_control" and seq_type == "bisulfite":
+        dir = CTLMETH
+    if sample_type == "phix":
+        if seq_type == "bisulfite":
+            dir = PHIXMETH
+        if seq_type == "standard":
+            dir = PHIXSTD
+    if sample_type == "mm10":
+        if seq_type == "bisulfite":
+            dir = MM10METH
+        if seq_type == "standard":
+            dir = MM10STD
+    return(dir)
+
+def get_reference_genome_fasta(wcrds):
+    sample_name, prep_type, seq_mode, abundance_control, sample_type, seq_type = get_sample_info(wcrds)
+    if sample_type == "hg19":
+        if seq_type == "bisulfite":
+            dir = HG19METH + 'hg19.fa'
+        if seq_type == "standard":
+            dir = HG19STD + 'hg19.fa'
+    if sample_type == "microbial_control" and seq_type == "bisulfite":
+        dir = CTLMETH + 'mic.fa'
+    if sample_type == "phix":
+        if seq_type == "bisulfite":
+            dir = PHIXMETH + 'phix.fa'
+        if seq_type == "standard":
+            dir = PHIXSTD + 'phix.fa'
+    if sample_type == "mm10":
+        if seq_type == "bisulfite":
+            dir = MM10METH + 'mm10.fa'
+        if seq_type == "standard":
+            dir = MM10STD + 'mm10.fa'
+    return(dir)
+
+def get_adapter_file(wcrds):
+    """
+    For trimming
+    """
+    with open(SEQUENCING_PREP_TABLE) as f:
+        next(f)
+        for line in f:
+            sample_name, prep_type, seq_mode, abundance_control, sample_type, seq_type = line.strip().split('\t')
+            if str(wcrds.sample) == sample_name:
+                prep = prep_type
+    if prep == "MEYER_SSLP":
+        adapt = MEYER_ADAPTORS
+    if prep == "SRSLY_SSLP":
+        adapt = SRSLY_ADAPTORS
+    if prep == "SWIFT_ACCEL":
+        adapt = SA_ADAPTORS
+    if prep == "MEYER_SRSLY":
+        adapt = MEYER_SRSLY_ADAPTORS
+
+    return(adapt)
+
+def aget_training_samples():
+    """
+    Get the samples from CFS/training_samples.tsv
+    """
+    sams2 = []
+    print("hi")
+    with open('CFS/training_samples.tsv') as f:
+        next(f)
+        for line in f:
+            sams2.append(line.split('\t')[0])
+    print(sams2)
+    print(len(sams2))
+    return(sams2)
+
+def is_spring(wcrds):
+    """
+    Determine if the input is FQ or SPRING
+    """
+    if os.path.exists(CLUSTER + config['DATA']+'samples/{sample}.spring') and not os.path.exists(CLUSTER+config['DATA']+'samples/{sample}_R1.fastq.gz'):
+        return(True)
+    else:
+        return(False)
+
+################################################################################
+# TISSUE OF ORIGIN VARIABLES
+################################################################################
+tissues = natsorted(set(x.split('_')[0] for x in config['REFERENCE_METHYLOMES']))
+comparing_groups=list(itertools.combinations(tissues, 2))
+comparing_groups=[x[0]+'_'+x[1] for x in comparing_groups]
+
+################################################################################
+# CLUSTER USED
+################################################################################
+CLUSTER = config['CLUSTER']
+################################################################################
+# File locations
+################################################################################
+SEQUENCING_PREP_TABLE = CLUSTER + config['SEQUENCING_PREP_TABLE']
+
+MEYER_ADAPTORS = CLUSTER + config['MEYER_ADAPTORS']
+SRSLY_ADAPTORS = CLUSTER + config['SRSLY_ADAPTORS']
+SA_ADAPTORS = CLUSTER + config['SA_ADAPTORS']
+MEYER_SRSLY_ADAPTORS = CLUSTER + config['MEYER_SRSLY_ADAPTORS']
+
+HG19METH = CLUSTER + config['HG19METH']
+CTLMETH = CLUSTER + config['CTLMETH']
+PHIXMETH = CLUSTER + config['PHIXMETH']
+HG19STD = CLUSTER + config['HG19STD']
+PHIXSTD = CLUSTER + config['PHIXSTD']
+
+MM10METH = CLUSTER + config['MM10METH']
+MM10STD = CLUSTER + config['MM10STD']
+
+METHYLOME_TABLE = CLUSTER + config['METHYLOME_TABLE']
+################################################################################
+# Software paths
+################################################################################
+SPRING = CLUSTER + config['SPRING']
+BISMARKINDEX = CLUSTER + config['BISMARKINDEX']
+BBDUK = CLUSTER + config['BBDUK']
+SGREP = CLUSTER + config['SGREP']
+SEQTK = CLUSTER + config['SEQTK']
+HMMCOPY_FA_BW = CLUSTER + config['HMMCOPY_FA_BW']
+HMMCOPY_MAP = CLUSTER + config['HMMCOPY_MAP']
+HMMCOPY_GC = CLUSTER + config['HMMCOPY_GC']
+HMMCOPY_READCOUNTER = CLUSTER + config['HMMCOPY_READCOUNTER']
+BISMARK = CLUSTER + config['BISMARK']
+METHEXT = CLUSTER + config['METHEXT']
+RMDUPS = CLUSTER + config['RMDUPS']
+FILTERNONCONV = CLUSTER + config['FILTERNONCONV']
+REPAIR = CLUSTER + config['REPAIR']
+METHPIPETOMR = CLUSTER + config['METHPIPETOMR']
+METHPIPEBSRATE = CLUSTER + config['METHPIPEBSRATE']
+HSBLASTN = CLUSTER + config['HSBLASTN']
+GRAMMY_GDT = CLUSTER + config['GRAMMY_GDT']
+GRAMMY_RDT = CLUSTER + config['GRAMMY_RDT']
+GRAMMY_PRE = CLUSTER + config['GRAMMY_PRE']
+GRAMMY_EM = CLUSTER + config['GRAMMY_EM']
+GRAMMY_POST = CLUSTER + config['GRAMMY_POST']
+GRAMMY_REF_FASTA = CLUSTER + config['GRAMMY_REF_FASTA']
+bigWigToBedGraph = config['bigWigToBedGraph']
+CROSSMAP = CLUSTER + config['CROSSMAP']
+METILENE = CLUSTER + config['METILENE']
+TRIM_GALORE = CLUSTER + config['TRIM_GALORE']
+################################################################################
+# Variables
+################################################################################
+AUTOSOMALCHROMO = config['AUTOSOMALCHROMO']
+KNOWNCHROMO = config['KNOWNCHROMO']
+################################################################################
+# Threads
+################################################################################
+indexing_threads=30
+fastqc_threads=1
+trim_threads=6
+alignment_threads=10
+filter_bam_threads=6
+methylation_extraction_threads=5
+blast_threads=5
+################################################################################
+# RULES
+################################################################################
+
+ALL_BISULFITE_SAMPLES = config['PLASMA_BS'] #+ config['PHIX_BS'] +config['URINE_BS'] + #config['INSILICO_BS'] + config['PHIX_BS']
+
+ALL_STANDARD_SAMPLES = config['URINE'] #+ config['PHIX'] + config['LCM'] + config['ZYMOD6305']
+
+rule all:
+    input:
+        expand('sample_output/fastqc/{sample}_{read}_fastqc.html', sample =  ALL_BISULFITE_SAMPLES, read = ['R1', 'R2']),
+        expand('sample_output/stats/{sample}_mapping_stats.txt', sample=  ALL_BISULFITE_SAMPLES),
+        expand('sample_output/Lengths/{sample}_FragsHistogram.pdf', sample =  ALL_BISULFITE_SAMPLES),
+        expand('sample_output/conversion_rates/{sample}.bsconversion', sample = ALL_BISULFITE_SAMPLES),
+        expand('sample_output/conversion_rates/{sample}.CHfilt.bsconversion', sample = ALL_BISULFITE_SAMPLES),
+
+        #expand('sample_output/decontaminate_unmapped/kmer_decontaminate/{sample}.decon.fa', sample = ALL_BISULFITE_SAMPLES),
+        #expand('sample_output/decontaminate_unmapped/kmer_decontaminate/{sample}.CT.decon.fa', sample = ALL_BISULFITE_SAMPLES),
+
+        expand('sample_output/C_poor/grammy/{sample}/{sample}.grammy.tab', sample = ALL_BISULFITE_SAMPLES),
+        expand('sample_output/unfiltered/grammy/{sample}/{sample}.grammy.tab', sample = ALL_BISULFITE_SAMPLES),
+        expand('sample_output/refiltered/{sample}/{sample}.tblat.1', sample = ALL_BISULFITE_SAMPLES),
+        expand('sample_output/refiltered/{sample}/{sample}.grammy.tab', sample = ALL_BISULFITE_SAMPLES),
+
+        # TISSUE OF ORIGIN AND HOST METHYLATION
+        #expand('sample_output/mbias/{sample}.pdf', sample = ALL_BISULFITE_SAMPLES),
+        #expand('sample_output/classic_tissues_of_origin{dir}/{sample}.tsv', dir = ['_trim'], sample = config['PLASMA_BS'] + config['URINE_BS']),
+        #expand('sample_output/GVHD_Refs/classic_tissues_of_origin{dir}/{sample}.tsv', dir = ['_trim'], sample = config['PLASMA_BS'] + config['URINE_BS']),
+        #expand('sample_output/MEGAKA_Refs/classic_tissues_of_origin{dir}/{sample}.tsv', dir = ['_trim'], sample = config['PLASMA_BS'] + config['URINE_BS'])
+
+        #STANDARD SEQUENCING
+        #expand('sample_output/stds/blast_filtered/{sample}.sorted.outfmt6', sample = config['PHIX']),
+        #expand('sample_output/decontaminate_unmapped/stds/kmer_decontaminate/{sample}.stds.decon.fa', sample = config['PHIX']),
+        expand('sample_output/stds/grammy/{sample}/{sample}.grammy.tab', sample = config['PHIX']),
+        #expand('sample_output/trim/{sample}_R1_trim.fastq', sample = config['PHIX'])
+
+    output:
+        'SNAKEMAKE_COMPLETION.txt'
+    shell:
+        """
+        find ./sample_output -type d -empty -delete
+        dt=$(date '+%d/%m/%Y %H:%M:%S')
+        echo "snakemake completed on $dt" >> {output[0]}
+        """
+
+#Rules that create references (generally only need to be run once)
+#include: 'rules/references/get_and_index_hg19.smk'
+#include: 'rules/references/index_mic_ctl.smk'
+#include: 'rules/references/get_and_index_phix.smk'
+#include: 'rules/references/get_and_index_GRAMMy.smk'
+#include: 'rules/references/prepare_donorfraction.smk'
+
+#include: 'rules/reference_methylomes/download_methylomes.smk'
+#include: 'rules/reference_methylomes/format_methylomes.smk'
+#include: 'rules/reference_methylomes/create_methylmatrix.smk'
+#include: 'rules/reference_methylomes/get_DMRs2.smk'
+
+include: 'rules/qc/fastqc.smk'
+include: 'rules/alignment/trim.smk'
+include: 'rules/alignment/alignment.smk'
+include: 'rules/alignment/length_profiles.smk'
+
+include: 'rules/stats/mapping_stats.smk'
+
+include: 'rules/methylation/estimate_BSconversion.smk'
+
+include: 'rules/metagenomics/decontaminate_unmapped.smk'
+
+include: 'rules/metagenomics/C_poor_abundances.smk'
+include: 'rules/metagenomics/unfiltered_abundances.smk'
+include: 'rules/metagenomics/refiltered_abundances.smk'
+
+include: 'rules/metagenomics/stds_pipeline.smk'

@@ -1,0 +1,114 @@
+PLASMA_BS:
+     [
+
+     ]
+
+PLASMA:
+     [
+     ]
+
+URINE_BS:
+     [
+     ]
+
+URINE:
+    [
+    ]
+
+PHIX_BS:
+    [
+
+    ]
+
+PHIX:
+    [
+
+    ]
+
+INSILICO_BS:
+     [
+
+     ]
+
+LCM_BS:
+     [
+     ]
+
+LCM:
+     [
+
+     ]
+
+ZYMOD6305_BS:
+     [
+     ]
+
+ZYMOD6305:
+     [
+     ]
+
+CONTROLS_BS:
+     [
+     ]
+
+
+CONTROLS:
+     [
+     ]
+
+KNOWNCHROMO:
+     [chr1, chr2, chr3, chr4, chr5, chr6, chr7, chr8, chr9, chr10, chr11, chr12, chr13, chr14, chr15, chr16, chr17, chr18, chr19, chr20, chr21, chr22, chrX, chrY]
+
+#Locations
+CLUSTER: "" #default is / for cluster2
+DATA: /workdir/apc88/CoffeeSeq/Data/
+SEQUENCING_PREP_TABLE: /workdir/apc88/CoffeeSeq/sequencing_prep_table.tsv
+MEYER_ADAPTORS: /workdir/apc88/CoffeeSeq/referencesadapter_sequences/adapters_meyer.fa
+SRSLY_ADAPTORS: /workdir/apc88/CoffeeSeq/references/adapter_sequences/adapters_srsly.fa
+MEYER_SRSLY_ADAPTORS: /workdir/apc88/CoffeeSeq/references/adapter_sequences/adapters_meyer_srsly.fa
+SA_ADAPTORS: /workdir/apc88/CoffeeSeq/references/adapter_sequences/adapters_sa.fa
+
+
+#REFERENCES: /workdir/apc88/CoffeeSeq/references/
+#REFERENCE_METHYLOMES: /workdir/apc88/WGBS_pipeline/Reference_Methylomes/MethylMatrix/all_chr/
+#ADAPTOR_SEQUENCES: /workdir/apc88/CoffeeSeq/references/adapter_sequences/adapters_meyer.fa
+
+#References
+HG19METH: /workdir/apc88/CoffeeSeq/references/hg19_Bismark/
+CTLMETH: /workdir/apc88/CoffeeSeq/references/controls_Bismark/
+PHIXMETH: /workdir/apc88/CoffeeSeq/references/phix_Bismark/
+HG19STD: /workdir/apc88/CoffeeSeq/references/hg19_Bowtie2/
+PHIXSTD: /workdir/apc88/CoffeeSeq/references/phix_Bowtie2/
+MM10METH: /workdir/apc88/CoffeeSeq/references/mm10_Bismark/
+MM10STD: /workdir/apc88/CoffeeSeq/references/mm10_Bowtie2/
+#HG19: /workdir/apc88/CoffeeSeq/references/hg19_Bismark/hg19.fa
+
+#CTLREF: /workdir/apc88/CoffeeSeq/references/mic_control/
+#CTLREF_fasta: /workdir/apc88/CoffeeSeq/references/mic_control/mic.fa
+# Programs
+SPRING: /workdir/apc88/CoffeeSeq/software/SPRING/build/spring
+BISMARKINDEX: /workdir/apc88/CoffeeSeq/software/Bismark-0.22.3/bismark_genome_preparation
+BBDUK: /workdir/apc88/CoffeeSeq/software/bbmap/bbduk.sh
+BISMARK: /workdir/apc88/CoffeeSeq/software/Bismark-0.22.1/bismark
+RMDUPS : /workdir/apc88/CoffeeSeq/software/Bismark-0.22.1/deduplicate_bismark
+FILTERNONCONV: /workdir/apc88/CoffeeSeq/software/Bismark-0.23.0/filter_non_conversion
+METHEXT: /workdir/apc88/CoffeeSeq/software/Bismark-0.22.1/bismark_methylation_extractor
+SGREP: /programs/sgrep_sorted/bin/sgrep
+HSBLASTN: /workdir/apc88/CoffeeSeq/software/hs-blastn-src/hs-blastn
+REPAIR: /workdir/apc88/CoffeeSeq/software/bbmap/repair.sh
+TRIM_GALORE: /workdir/apc88/CoffeeSeq/software/TrimGalore-0.6.5
+#Scripts
+GRAMMY_GDT: /workdir/apc88/CoffeeSeq/software/GRAMMy/grammy/grammy_gdt.py
+GRAMMY_RDT: /workdir/apc88/CoffeeSeq/software/GRAMMy/grammy/grammy_rdt.py
+GRAMMY_PRE: /workdir/apc88/CoffeeSeq/software/GRAMMy/grammy/grammy_pre.py
+GRAMMY_EM: /workdir/apc88/CoffeeSeq/software/GRAMMy/grammy/grammy_em.py
+GRAMMY_POST: /workdir/apc88/CoffeeSeq/software/GRAMMy/grammy/grammy_post.py
+GRAMMY_REF_FASTA: /workdir/apc88/WGBS_pipeline/grammy/NCBIGenomes06_GA
+#PICARD_MARKDUP: java -jar /workdir/apc88/CoffeeSeq/software/picard.jar MarkDuplicates
+METHPIPETOMR: /workdir/apc88/CoffeeSeq/software/methpipe-3.4.3/bin/to-mr
+METHPIPEBSRATE: /workdir/apc88/CoffeeSeq/software/methpipe-3.4.3/bin/bsrate
+
+
+SEQTK: /workdir/apc88/CoffeeSeq/software/seqtk/seqtk
+METILENE: /workdir/apc88/CoffeeSeq/software/metilene_v0.2-7/metilene_linux64
+AUTOSOMALCHROMO: chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22

@@ -1,0 +1,95 @@
+library(data.table)
+library(parallel)
+
+get_eff_len2 <- function(a, b, c, d, e){
+  a = as.numeric(a)
+  b = as.numeric(b)
+  c = as.numeric(c)
+  d = as.numeric(d)
+  genome_len = as.numeric(e)
+  lengths = sort(c(a,b,c,d))
+  len1 = lengths[4]-lengths[1]
+  len2 = genome_len - lengths[3] + lengths[2]
+  eff_len = min(len1, len2) + 1
+  return(eff_len)
+}
+
+do_it <- function(read_id, taxid_lengths, outdir, basnam){
+  
+  R1_file = paste0("/programs/sorted_grep-1.0/sgrep ", read_id, " ", outdir, "/", basnam, ".R1.outfmt6.sorted")
+  R2_file = paste0("/programs/sorted_grep-1.0/sgrep ", read_id, " ", outdir, "/", basnam, ".R2.outfmt6.sorted")
+  
+  R1 = fread(cmd=R1_file, col.names = c('qseqid', 'sseqid_R1', 'pident_R1', 'length_R1', 'mismatch_R1', 'gapopen_R1', 'qstart_R1', 'qend_R1', 'sstart_R1', 'send_R1', 'evalue_R1', 'bitscore_R1', 'qlen_R1', 'strand', 'taxid'))
+  R2 = fread(cmd=R2_file, col.names = c('qseqid', 'sseqid_R2', 'pident_R2', 'length_R2', 'mismatch_R2', 'gapopen_R2', 'qstart_R2', 'qend_R2', 'sstart_R2', 'send_R2', 'evalue_R2', 'bitscore_R2', 'qlen_R2', 'strand', 'taxid'))
+  
+  R1 = R1[R1$length_R1/R1$qlen_R1 >=0.9, ]
+  R2 = R2[R2$length_R2/R2$qlen_R2 >=0.9, ]
+  
+  R1 = R1[R1$taxid != "GI_NOT_FOUND", ]
+  R2 = R2[R2$taxid != "GI_NOT_FOUND", ]
+  
+  R1$taxid = as.character(R1$taxid)
+  R2$taxid = as.character(R2$taxid)
+  
+  R1$qseqid = gsub("_.*", "", R1$qseqid)
+  R2$qseqid = gsub("_.*", "", R2$qseqid)
+  
+  over_occuring_rows <- merge(data.frame(table(R1$qseqid)),
+                              data.frame(table(R2$qseqid)),
+                              by='Var1')
+  over_occuring_reads <- as.character(over_occuring_rows$Var1[over_occuring_rows$Freq.x >10000 | over_occuring_rows$Freq.y >10000])
+  
+  R1 <- R1[!(R1$qseqid %in% over_occuring_reads), ]
+  R2 <- R2[!(R2$qseqid %in% over_occuring_reads), ]
+  
+  #start of minor changes we got thiiiiis
+  #paired = merge(R1, R2, by=c('qseqid', 'strand', 'taxid'), allow.cartesian = TRUE)
+  
+  colnames(R1)[[2]]<-'sseqid'
+  colnames(R2)[[2]]<-'sseqid'
+  paired = merge(R1, R2, by=c('qseqid', 'strand', 'taxid', 'sseqid'), allow.cartesian = TRUE)
+  
+  # end of minor changes lets get it
+  paired = merge(paired, taxid_lengths, by='taxid')
+  
+  paired$effective_length <- with(paired, vv(sstart_R1, send_R1, sstart_R2, send_R2, genome_len))
+  
+  #paired = paired[paired$effective_length<1000, ]
+  
+  #paired = paired[order(paired$qseqid, paired$effective_length, paired$strand, paired$sseqid, paired$pident_R1,
+   #                     paired$length_R1, paired$mismatch_R1, paired$gapopen_R1, paired$qstart_R1, paired$qstart_R2,
+    #                    paired$qend_R1, paired$sstart_R1, paired$send_R1, paired$evalue_R1, paired$bitscore_R1, paired$qlen_R1,
+     #                   paired$pident_R2,
+      #                  paired$length_R2, paired$mismatch_R2, paired$gapopen_R2, paired$qstart_R2, paired$qstart_R2,
+       #                 paired$qend_R2, paired$sstart_R2, paired$send_R2, paired$evalue_R2, paired$bitscore_R2, paired$qlen_R2
+  #), ] #duplicate function will keep the first occurence, which by this definition is
+  # also the shortest
+  #to_keep = !duplicated(paired$qseqid)
+  
+  #paired = paired[to_keep, ]
+  outfile = paste0(outdir, '/', read_id, '.final')
+  fwrite(x = paired, file = outfile, quote = FALSE, sep='\t', col.names = FALSE, row.names = FALSE, append = FALSE)
+}
+
+do_it2 <-function(read_id, taxid_lengths, outdir, basnam){
+  try(do_it(read_id, taxid_lengths, outdir, basnam), silent=TRUE)
+}
+
+args = commandArgs(trailingOnly = TRUE)
+taxid_file <- args[[1]]
+taxid_lengths = fread(taxid_file)
+taxid_lengths$taxid<- as.character(taxid_lengths$taxid)
+
+readid_file <- args[[2]]
+READIDS <- fread(readid_file, header=FALSE)
+outdir <- args[[3]]
+threads <- args[[4]]
+basnam <- args[[5]]
+vv <- Vectorize(get_eff_len2, vectorize.args=c('a', 'b', 'c', 'd', 'e'))
+
+
+
+
+mclapply(X=READIDS$V1, FUN=do_it2, mc.cores=threads, taxid_lengths, outdir, basnam)
+
+
