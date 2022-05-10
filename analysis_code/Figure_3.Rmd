@@ -1,0 +1,217 @@
+---
+title: "Figure 3"
+author: "Omary Mzava & Alexandre Cheng"
+date: "5/5/2022"
+output: html_document
+---
+
+
+
+```{r}
+rm(list = ls())
+library(data.table)
+library(ggplot2)
+library(tidyverse)
+
+# Funcions -----
+get_grammy <- function(filename, filt, tax_level){
+  #print(filename)
+  df <- fread(filename, data.table = FALSE)
+  df <- df[, c('SAMPLE', tax_level, 'AdjustedBlast', 'RelCoverage', 'superkingdom')]
+  form <- as.formula(paste(c(".~", "SAMPLE", "superkingdom", tax_level), collapse = "+"))
+  df <- aggregate(form, df, sum)
+  cluster_id <- df$SAMPLE[1]
+  df$cluster_id <- cluster_id
+  df$filt <- filt
+  return(df)
+}
+
+# Load tables ------
+metadata <- fread('tables/metadata.csv', na.strings = c("NA", ""))
+metadata <- metadata[metadata$cohort=="Urine-UTI", ]
+
+filtered_files <- rbindlist(lapply(X = metadata$refiltered_grammy_path, 
+                                   FUN = get_grammy,
+                                   filt = "refiltered",
+                                   tax_level="species"))
+filtered_files<-filtered_files[filtered_files$AdjustedBlast>=1,]
+unfiltered_files <- rbindlist(lapply(X = metadata$unfiltered_grammy_path, 
+                                     FUN = get_grammy,
+                                     filt = "unfiltered",
+                                     tax_level="species"))
+unfiltered_files<-unfiltered_files[unfiltered_files$AdjustedBlast>=1,]
+
+cofee_files <- merge(filtered_files, unfiltered_files, by = c("SAMPLE", "cluster_id", "superkingdom", "species"))
+cofee_files$rat <- cofee_files$AdjustedBlast.x/cofee_files$AdjustedBlast.y*100
+cofee_files <- cofee_files[cofee_files$rat > 0.01, ]
+
+cofee_files <- merge(cofee_files[, c('cluster_id', 'superkingdom', 'species', 'AdjustedBlast.x', 'rat')], metadata[, c('cluster_id', 'cohort', 'group', 'primary_infection', 'PE_adapter_trimmed_molecules')])
+cofee_files$MPM <- cofee_files$AdjustedBlast.x/cofee_files$PE_adapter_trimmed_molecules*1000000
+
+
+unfiltered_files <- merge(unfiltered_files[, c('cluster_id', 'superkingdom', 'species', 'AdjustedBlast')], metadata[, c('cluster_id', 'cohort', 'group', 'primary_infection', 'PE_adapter_trimmed_molecules')])
+unfiltered_files$MPM <- unfiltered_files$AdjustedBlast/unfiltered_files$PE_adapter_trimmed_molecules*1000000
+
+bugs_of_interest <- unique(metadata$primary_infection[!is.na(metadata$primary_infection)])
+
+cofee_bugs <- cofee_files[cofee_files$species %in% bugs_of_interest, ]
+unfiltered_files <- unfiltered_files[unfiltered_files$species %in% bugs_of_interest, ]
+unfiltered_files$filt <- "Unfiltered"
+
+
+cofee_bugs = cofee_files
+colnames(cofee_bugs)[[4]]<-"AdjustedBlast"
+cofee_bugs$rat <- NULL
+cofee_bugs$filt <- "Filtered"
+df <- rbind(cofee_bugs, unfiltered_files)
+main.df = df
+
+
+
+cofee_agg_by_sample <- df[, c("MPM", "cluster_id", "group", "filt")]
+
+
+df$species <- as.character(df$species)
+df$species <- factor(df$species, levels = rev(c("562", "1351", "1352", "287", "573")))
+
+df$primary_infection <- as.character(df$primary_infection)
+df$primary_infection[is.na(df$primary_infection)]<-"No growth"
+df$primary_infection <- factor(df$primary_infection, levels = c("562", "1351", "1352", "287", "573", "No growth"))
+df = df[!is.na(df$species),]
+
+
+
+
+
+ggplot(data = df)+
+  geom_tile(aes(x=cluster_id, y=species, fill = log10(MPM)))+
+  facet_grid(rows = vars(filt), cols = vars(primary_infection), scales = "free_x", space = "free")+
+  theme_bw()+
+  xlab(" ")+
+  ylab("Sequenced microbe")+
+  #scale_fill_gradient2()+
+  #scale_fill_gradientn(colors = c("navy","deepskyblue1","goldenrod3","firebrick"))+
+  #scale_fill_gradientn(colours = c("white", "steelblue", "#d5b60a", "darkred"))+
+  scale_fill_viridis_c()+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_text(family = "Helvetica", size = 6),
+        axis.title = element_text(family = "Helvetica", size = 8),
+        strip.text = element_text(family = "Helvetica", size = 6),
+        strip.background = element_blank(),
+        #legend.position = "none",
+        #legend.title = element_text(family = "Helvetica", size = 8),
+        #legend.text = element_text(family = "Helvetica", size = 6))
+  )
+
+
+
+
+
+
+cofee_agg_by_sample$new <- paste(cofee_agg_by_sample$group, cofee_agg_by_sample$filt, sep = "_")
+pairwise.wilcox.test(x =cofee_agg_by_sample$MPM, 
+                     g = cofee_agg_by_sample$new,p.adjust.method = "none")
+
+aggregate(.~group, cofee_agg_by_sample[, c("group", "MPM")], sd)
+
+
+
+```
+
+
+
+
+
+
+
+
+
+```{r}
+rm(list = ls())
+library(data.table)
+library(ggplot2)
+library(tidyverse)
+
+# Funcions -----
+get_grammy <- function(filename, filt, tax_level){
+  #print(filename)
+  df <- fread(filename, data.table = FALSE)
+  df <- df[, c('SAMPLE', tax_level, 'AdjustedBlast', 'RelCoverage', 'superkingdom')]
+  form <- as.formula(paste(c(".~", "SAMPLE", "superkingdom", tax_level), collapse = "+"))
+  df <- aggregate(form, df, sum)
+  cluster_id <- df$SAMPLE[1]
+  df$cluster_id <- cluster_id
+  df$filt <- filt
+  return(df)
+}
+
+# Load tables ------
+metadata <- fread('tables/metadata.csv', na.strings = c("NA", ""))
+metadata <- metadata[metadata$cohort=="Urine-UTI", ]
+
+filtered_files <- rbindlist(lapply(X = metadata$refiltered_grammy_path, 
+                                   FUN = get_grammy,
+                                   filt = "refiltered",
+                                   tax_level="species"))
+filtered_files<-filtered_files[filtered_files$AdjustedBlast>=1,]
+unfiltered_files <- rbindlist(lapply(X = metadata$unfiltered_grammy_path, 
+                                     FUN = get_grammy,
+                                     filt = "unfiltered",
+                                     tax_level="species"))
+unfiltered_files<-unfiltered_files[unfiltered_files$AdjustedBlast>=1,]
+
+cofee_files <- merge(filtered_files, unfiltered_files, by = c("SAMPLE", "cluster_id", "superkingdom", "species"))
+cofee_files$rat <- cofee_files$AdjustedBlast.x/cofee_files$AdjustedBlast.y*100
+cofee_files <- cofee_files[cofee_files$rat > 0.01, ]
+
+cofee_files <- merge(cofee_files[, c('cluster_id', 'superkingdom', 'species', 'AdjustedBlast.x', 'rat')], metadata[, c('cluster_id', 'cohort', 'group', 'primary_infection', 'PE_adapter_trimmed_molecules')])
+cofee_files$MPM <- cofee_files$AdjustedBlast.x/cofee_files$PE_adapter_trimmed_molecules*1000000
+
+
+
+
+unfiltered_files <- merge(unfiltered_files[, c('cluster_id', 'superkingdom', 'species', 'AdjustedBlast')], metadata[, c('cluster_id', 'cohort', 'group', 'primary_infection', 'PE_adapter_trimmed_molecules')])
+unfiltered_files$MPM <- unfiltered_files$AdjustedBlast/unfiltered_files$PE_adapter_trimmed_molecules*1000000
+
+unfiltered_files$filt <- "Unfiltered"
+
+
+cofee_bugs = cofee_files
+colnames(cofee_bugs)[[4]]<-"AdjustedBlast"
+cofee_bugs$rat <- NULL
+cofee_bugs$filt <- "Filtered"
+df <- rbind(cofee_bugs, unfiltered_files)
+main.df = df
+
+
+
+cofee_agg_by_sample <- df[, c("MPM", "cluster_id", "group", "filt")]
+
+
+cofee_agg_by_sample = cofee_agg_by_sample %>% dplyr::group_by(filt,group,cluster_id) %>% dplyr::summarise(MPM=sum(MPM))
+
+
+ggplot(data = cofee_agg_by_sample, aes(x=group, y= MPM, fill= filt))+
+  geom_boxplot(lwd=0.5, outlier.size = 0.3)+
+  geom_point(position = position_dodge(width = 0.75), aes(fill=filt), alpha=0.75, size=0.3)+
+  scale_y_log10(labels = scales::trans_format("log10", ))+
+  scale_fill_manual(values = c("#66A182", "#d1495b"))+
+  theme_classic()+
+  ylab("Microbial load (MPM)")+
+  xlab(" ")+
+  theme(axis.text = element_text(family = "Helvetica", size = 6),
+        axis.title = element_text(family = "Helvetica", size = 8),
+        legend.position = "none")
+
+
+
+
+cofee_agg_by_sample$new <- paste(cofee_agg_by_sample$group, cofee_agg_by_sample$filt, sep = "_")
+pairwise.wilcox.test(x =cofee_agg_by_sample$MPM, 
+                     g = cofee_agg_by_sample$new,p.adjust.method = "none")
+
+aggregate(.~group, cofee_agg_by_sample[, c("group", "MPM")], sd)
+
+
+```
+

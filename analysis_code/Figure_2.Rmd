@@ -1,0 +1,846 @@
+---
+title: "Code to generate figure 2"
+author: "Omary Mzava & Alexandre Cheng"
+date: "5/3/2022"
+output: html_document
+---
+
+
+
+Figure 2a
+```{r}
+rm(list=ls())
+library(xlsx)
+library(readxl)
+library(EnvStats)
+library(data.table)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+# Funcions -----
+get_grammy <- function(filename, filt, tax_level){
+ # print(filename)
+  df <- fread(filename, data.table = FALSE)
+  df <- df[, c('SAMPLE', tax_level, 'AdjustedBlast', 'RelCoverage', 'superkingdom', "genus")]
+  form <- as.formula(paste(c(".~", "SAMPLE", "superkingdom","genus", tax_level), collapse = "+"))
+  df <- aggregate(form, df, sum)
+  cluster_id <- df$SAMPLE[1]
+  df$cluster_id <- cluster_id
+  df$filt <- filt
+  return(df)
+}
+
+# Load tables ------
+metadata <- fread('tables/metadata.csv', na.strings = c("NA", ""))
+
+
+filtered_files <- rbindlist(lapply(X = metadata$refiltered_grammy_path, 
+                                   FUN = get_grammy,
+                                   filt = "refiltered",
+                                   tax_level="species"))
+filtered_files<- merge(filtered_files, metadata[,c('cluster_id',"cluster_id2")], by = "cluster_id")
+filtered_files<- filtered_files %>%  group_by(filt,cluster_id2,superkingdom,genus,species ) %>% summarise(AdjustedBlast=sum(AdjustedBlast),RelCoverage=sum(RelCoverage))
+colnames(filtered_files)[2]="cluster_id"
+filtered_files$SAMPLE = filtered_files$cluster_id
+filtered_files<-filtered_files[filtered_files$AdjustedBlast>=1,]
+
+metadata <- fread('tables/metadata.csv', na.strings = c("NA", ""))
+
+metadata = metadata[metadata$received_stool_sample!="No",]
+metadata <- metadata[metadata$biofluid=="urine" | metadata$biofluid=="plasma" , ]
+unfiltered_files <- rbindlist(lapply(X = metadata$unfiltered_grammy_path, 
+                                     FUN = get_grammy,
+                                     filt = "unfiltered",
+                                     tax_level="species"))
+unfiltered_files<- merge(unfiltered_files, metadata[,c('cluster_id',"cluster_id2")], by = "cluster_id")
+unfiltered_files<- unfiltered_files %>%  group_by(filt,cluster_id2,superkingdom,genus,species ) %>% summarise(AdjustedBlast=sum(AdjustedBlast),RelCoverage=sum(RelCoverage))
+colnames(unfiltered_files)[2]="cluster_id"
+unfiltered_files$SAMPLE = unfiltered_files$cluster_id
+unfiltered_files<-unfiltered_files[unfiltered_files$AdjustedBlast>=1,]
+
+
+cofee_files <- merge(filtered_files, unfiltered_files, by = c("SAMPLE", "cluster_id", "superkingdom","genus","species"))
+cofee_files$rat <- cofee_files$AdjustedBlast.x/cofee_files$AdjustedBlast.y*100
+cofee_files <- cofee_files[cofee_files$rat > 0.01, ]
+
+
+#####correct for number of reads 
+metadata = metadata[,c('cluster_id2','cohort','disease_status','PE_adapter_trimmed_molecules')]
+metadata = metadata %>%  group_by(cohort,disease_status,cluster_id2) %>% summarise(PE_adapter_trimmed_molecules=sum(PE_adapter_trimmed_molecules))
+colnames(metadata)[3]="cluster_id"
+
+
+
+
+
+
+
+cofee_files <- merge(cofee_files[, c('cluster_id', 'superkingdom','genus', 'species', 'AdjustedBlast.x', 'rat')], metadata[, c('cluster_id', 'cohort', 'PE_adapter_trimmed_molecules',"disease_status")])
+cofee_files$MPM <- cofee_files$AdjustedBlast.x/cofee_files$PE_adapter_trimmed_molecules*1000000
+
+
+
+unfiltered_files <- merge(unfiltered_files[, c('cluster_id', 'superkingdom','genus', 'species', 'AdjustedBlast')], metadata[, c('cluster_id', 'cohort', 'PE_adapter_trimmed_molecules',"disease_status")])
+unfiltered_files$MPM <- unfiltered_files$AdjustedBlast/unfiltered_files$PE_adapter_trimmed_molecules*1000000
+
+unfiltered_files$filt <- "Unfiltered"
+
+colnames(cofee_files)[[5]]<-"AdjustedBlast"
+cofee_files$rat <- NULL
+cofee_files$filt <- "Filtered"
+main_df <- rbind(cofee_files, unfiltered_files)
+
+
+main_df <- main_df %>% group_by(cluster_id,filt, superkingdom, cohort, PE_adapter_trimmed_molecules,disease_status,genus) %>% summarize(AdjustedBlast=sum(AdjustedBlast), MPM=sum(MPM))
+
+contaminant_genera<-read_excel("tables/quick_taxids.xlsx")
+filtered_files<-main_df %>% filter(filt=="Filtered")
+unfiltered_files<-main_df %>% filter(filt=="Unfiltered")
+
+non_contaminants_filtered<- filtered_files[!(filtered_files$genus %in% contaminant_genera$tax),]
+non_contaminants_filtered$MPM<-0
+non_contaminants_unfiltered<-unfiltered_files[!(unfiltered_files$genus %in% contaminant_genera$tax),]
+non_contaminants_unfiltered$MPM<-0
+
+contaminants_filtered<- filtered_files[filtered_files$genus %in% contaminant_genera$tax,]
+contaminants_unfiltered<-unfiltered_files[unfiltered_files$genus %in% contaminant_genera$tax,]
+####stats#####quick_stats
+
+1-length(contaminants_filtered$genus)/length(contaminants_unfiltered$genus)
+length(unique(contaminants_unfiltered$genus))
+######
+samples_without_genus<-contaminants_unfiltered[!(contaminants_unfiltered$cluster_id %in% contaminants_filtered$cluster_id),]
+samples_without_genus$filt<-"Filtered"
+samples_without_genus$MPM<-0
+
+contaminants<-rbind(non_contaminants_filtered,non_contaminants_unfiltered,
+                    contaminants_filtered,contaminants_unfiltered,samples_without_genus)
+#### quick stats
+filtered_contaminants = contaminants[contaminants$filt=='Filtered',]
+unfiltered_contaminants = contaminants[contaminants$filt=='Unfiltered',]
+1-(length(filtered_contaminants$genus)/length(unfiltered_contaminants$genus))
+######
+
+contaminants<- contaminants %>% select(cluster_id,cohort,filt,genus, MPM)
+contaminants<-contaminants %>% left_join(contaminant_genera, by=c("genus"="tax"))
+contaminants$filt<-factor(contaminants$filt, levels = c("Unfiltered","Filtered"))
+contaminants$cohort<-factor(contaminants$cohort, levels = c("Plasma-COVID19",  "Plasma-IBD","Plasma-TB","Plasma-Sepsis","Urine-UTI","Urine-Stents"))
+
+
+
+
+
+
+
+
+top_5_each_sample<-contaminants %>% filter(filt=="Unfiltered") %>% group_by(cluster_id) %>% arrange(desc(MPM)) %>% slice(1:5)
+contaminants<-contaminants[contaminants$genus %in% top_5_each_sample$genus, ]
+contaminants$genus.y<-reorder(contaminants$genus.y, contaminants$MPM)
+
+
+
+
+
+
+contaminants %>% ggplot(., aes(x=cluster_id, y=genus.y)) +
+  geom_tile(aes(fill = log10(MPM))) +
+  theme_bw()+facet_grid(filt~cohort+disease_status, scales='free', space = "free") +  
+  scale_fill_viridis_c(na.value = "transparent",breaks = c(min(ceiling(log10(contaminants$MPM[contaminants$MPM > 0]))),0, 2,4) )+theme(
+        axis.text.x=element_blank(),
+        #axis.title.x = element_text(size=8),
+        #axis.text.y = element_blank(),
+        axis.text.y = element_text(size = 6),
+        #axis.title.y = element_blank(),
+        axis.ticks.x = element_blank(),
+        #legend.key.size = unit(0.1, "in"),
+        #legend.key.width = unit(0.4,"in"),
+        #strip.text = element_blank(),
+        #legend.title = element_text(size=8),
+        #legend.text = element_text(size = 6),
+        #legend.position = "none",
+        strip.text = element_text(size = 5, colour = "BLACK"),
+        )
+
+
+
+
+contaminants %>% ggplot(., aes(x=cluster_id, y=genus.y)) +
+  geom_tile(aes(fill = log10(MPM))) +
+  theme_bw()+facet_grid(filt~cohort+disease_status, scales='free', space = "free") +  
+  scale_fill_viridis_c(na.value = "transparent", breaks = c(min(ceiling(log10(contaminants$MPM[contaminants$MPM > 0]))),0, 2,4))+theme(
+        axis.text.x=element_blank(),
+        #strip.background = element_blank(),
+        #strip.text.x = element_blank(),
+        #strip.text.y = element_blank(),
+        #axis.title.x = element_text(size=8),
+        strip.text.x = element_text(margin = margin(0,0,0,0, "mm"), size=0),
+        strip.text.y = element_text(margin = margin(0,0,0,0, "mm"), size=0),
+        axis.text.y = element_blank(),
+        #axis.text.y = element_text(size = 6),
+        axis.title.y = element_blank(),
+        axis.ticks.x = element_blank(),
+        legend.key.size = unit(0.1, "in"),
+        legend.key.width = unit(0.4,"in"),
+       # strip.text = element_blank(),
+        #legend.title = element_text(size=8),
+        #legend.text = element_text(size = 6),
+        legend.position = "none",
+        #strip.text = element_text(size = 6, colour = "BLACK"),
+        )
+
+```
+
+
+
+Fig 2b
+```{r}
+rm(list=ls())
+library(data.table)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(EnvStats)
+# Funcions -----
+get_grammy <- function(filename, filt, tax_level){
+ # print(filename)
+  df <- fread(filename, data.table = FALSE)
+  df <- df[, c('SAMPLE', tax_level, 'AdjustedBlast', 'RelCoverage', 'superkingdom', "genus")]
+  form <- as.formula(paste(c(".~", "SAMPLE", "superkingdom","genus", tax_level), collapse = "+"))
+  df <- aggregate(form, df, sum)
+  cluster_id <- df$SAMPLE[1]
+  df$cluster_id <- cluster_id
+  df$filt <- filt
+  return(df)
+}
+
+# Load tables ------
+metadata <- fread('tables/metadata.csv', na.strings = c("NA", ""))
+metadata = metadata[metadata$received_stool_sample!="No",]
+metadata <- metadata[metadata$biofluid=="urine" | metadata$biofluid=="plasma", ]
+
+filtered_files <- rbindlist(lapply(X = metadata$refiltered_grammy_path, 
+                                   FUN = get_grammy,
+                                   filt = "refiltered",
+                                   tax_level="species"))
+filtered_files<- merge(filtered_files, metadata[,c('cluster_id',"cluster_id2")], by = "cluster_id")
+filtered_files<- filtered_files %>%  group_by(filt,cluster_id2,superkingdom,genus,species ) %>% summarise(AdjustedBlast=sum(AdjustedBlast),RelCoverage=sum(RelCoverage))
+colnames(filtered_files)[2]="cluster_id"
+filtered_files$SAMPLE = filtered_files$cluster_id
+
+
+filtered_files<-filtered_files[filtered_files$AdjustedBlast>=1,]
+metadata <- fread('tables/metadata.csv', na.strings = c("NA", ""))
+
+
+metadata = metadata[metadata$received_stool_sample!="No",]
+metadata <- metadata[metadata$biofluid=="urine" | metadata$biofluid=="plasma" , ]
+unfiltered_files <- rbindlist(lapply(X = metadata$unfiltered_grammy_path, 
+                                     FUN = get_grammy,
+                                     filt = "unfiltered",
+                                     tax_level="species"))
+unfiltered_files<- merge(unfiltered_files, metadata[,c('cluster_id',"cluster_id2")], by = "cluster_id")
+unfiltered_files<- unfiltered_files %>%  group_by(filt,cluster_id2,superkingdom,genus,species ) %>% summarise(AdjustedBlast=sum(AdjustedBlast),RelCoverage=sum(RelCoverage))
+colnames(unfiltered_files)[2]="cluster_id"
+unfiltered_files$SAMPLE = unfiltered_files$cluster_id
+
+unfiltered_files<-unfiltered_files[unfiltered_files$AdjustedBlast>=1,]
+cofee_files <- merge(filtered_files, unfiltered_files, by = c("SAMPLE", "cluster_id", "superkingdom", "species"))
+cofee_files$rat <- cofee_files$AdjustedBlast.x/cofee_files$AdjustedBlast.y*100
+cofee_files <- cofee_files[cofee_files$rat > 0.01, ]
+
+
+metadata = metadata[,c('cluster_id2','cohort','disease_status','PE_adapter_trimmed_molecules')]
+metadata = metadata %>%  group_by(cohort,disease_status,cluster_id2) %>% summarise(PE_adapter_trimmed_molecules=sum(PE_adapter_trimmed_molecules))
+colnames(metadata)[3]="cluster_id"
+cofee_files <- merge(cofee_files[, c('cluster_id', 'superkingdom', 'species', 'AdjustedBlast.x', 'rat')], metadata[, c('cluster_id', 'cohort',"disease_status",'PE_adapter_trimmed_molecules')])
+cofee_files$MPM <- cofee_files$AdjustedBlast.x/cofee_files$PE_adapter_trimmed_molecules*1000000
+
+
+unfiltered_files <- merge(unfiltered_files[, c('cluster_id', 'superkingdom', 'species', 'AdjustedBlast')], metadata[, c('cluster_id', 'cohort',"disease_status",'PE_adapter_trimmed_molecules')])
+unfiltered_files$MPM <- unfiltered_files$AdjustedBlast/unfiltered_files$PE_adapter_trimmed_molecules*1000000
+
+unfiltered_files$filt <- "Unfiltered"
+
+colnames(cofee_files)[[4]]<-"AdjustedBlast"
+cofee_files$rat <- NULL
+cofee_files$filt <- "Filtered"
+main_df <- rbind(cofee_files, unfiltered_files)
+
+
+
+contaminants<- main_df %>% filter(species=="1747") %>%  dplyr::select(cluster_id,cohort,filt,cluster_id,species, MPM)
+
+contaminants_filtered<-contaminants %>% filter(filt=="Filtered")
+
+
+contaminants_unfiltered<-contaminants %>% filter(filt=="Unfiltered")
+
+samples_without_acnes <-contaminants_unfiltered[!(contaminants_unfiltered$cluster_id %in% contaminants_filtered$cluster_id),]
+samples_without_acnes$filt <-"Filtered"
+samples_without_acnes$MPM<-0
+contaminants<-rbind(contaminants_filtered,contaminants_unfiltered,samples_without_acnes )
+contaminants$filt<-factor(contaminants$filt, levels = c("Unfiltered","Filtered"))
+contaminants$cohort<-factor(contaminants$cohort, levels = c("Plasma-COVID19",  "Plasma-IBD","Plasma-TB","Plasma-Sepsis" , "Urine-UTI","Urine-Stents"))
+
+
+
+contaminants = left_join(contaminants,metadata, by="cluster_id")
+contaminants = contaminants %>% dplyr::select(cluster_id,cohort.x,filt,species,MPM, disease_status)
+
+contaminants = contaminants %>% mutate(condition = case_when(disease_status == "No UTI" ~ "No UTI",disease_status == "UTI"~"UTI", cohort.x =="Plasma-IBD"~"Plasma-IBD",
+                                                             cohort.x == "Plasma-COVID19"~"Plasma-COVID19", cohort.x=="Plasma-TB"~"Plasma-TB", cohort.x == "Plasma-Sepsis"~"Plasma-Sepsis",cohort.x =="Urine-Stents"~"Urine-Stents") )
+contaminants$condition = factor(contaminants$condition, levels = c("Plasma-COVID19","Plasma-IBD", "Plasma-TB","Plasma-Sepsis", "UTI","No UTI","Urine-Stents" ))
+
+
+
+contaminants %>% group_by(condition,filt,cluster_id) %>% summarize(MPM=sum(MPM)) %>% 
+  ggplot(.,aes(condition,(MPM),color=filt)) + geom_boxplot(lwd=0.5, outlier.size = 0.3)+
+  geom_point(position = position_dodge(width = 0.75), aes(fill=filt), alpha=0.75, size=0.3)+theme_classic()+scale_color_manual(values=c("#B2182B", "#2166AC"))+
+  ylab("log10 MPM")+
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 6),
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    #axis.text.y = element_text(size=6),
+    legend.position = "none",
+    strip.text = element_text(size = 6, colour = "BLACK")
+  )+ stat_n_text()+scale_y_continuous(trans="pseudo_log",breaks = c(0,10,100,200,600))
+
+
+```
+
+
+Fig 2c
+
+```{r}
+library(xlsx)
+library(readxl)
+library(EnvStats)
+rm(list=ls())
+library(data.table)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(EnvStats)
+# Funcions -----
+get_grammy <- function(filename, filt, tax_level){
+ # print(filename)
+  df <- fread(filename, data.table = FALSE)
+  df <- df[, c('SAMPLE', tax_level, 'AdjustedBlast', 'RelCoverage', 'superkingdom', "genus")]
+  form <- as.formula(paste(c(".~", "SAMPLE", "superkingdom","genus", tax_level), collapse = "+"))
+  df <- aggregate(form, df, sum)
+  cluster_id <- df$SAMPLE[1]
+  df$cluster_id <- cluster_id
+  df$filt <- filt
+  return(df)
+}
+
+# Load tables ------
+metadata <- fread('tables/metadata.csv', na.strings = c("NA", ""))
+
+filtered_files <- rbindlist(lapply(X = metadata$refiltered_grammy_path, 
+                                   FUN = get_grammy,
+                                   filt = "refiltered",
+                                   tax_level="species"))
+filtered_files<- merge(filtered_files, metadata[,c('cluster_id',"cluster_id2")], by = "cluster_id")
+filtered_files<- filtered_files %>%  group_by(filt,cluster_id2,superkingdom,genus,species ) %>% summarise(AdjustedBlast=sum(AdjustedBlast),RelCoverage=sum(RelCoverage))
+colnames(filtered_files)[2]="cluster_id"
+filtered_files$SAMPLE = filtered_files$cluster_id
+filtered_files<-filtered_files[filtered_files$AdjustedBlast>=1,]
+
+metadata <- fread('tables/metadata.csv', na.strings = c("NA", ""))
+metadata = metadata[metadata$received_stool_sample!="No",]
+metadata <- metadata[metadata$biofluid=="urine" | metadata$biofluid=="plasma" , ]
+unfiltered_files <- rbindlist(lapply(X = metadata$unfiltered_grammy_path, 
+                                     FUN = get_grammy,
+                                     filt = "unfiltered",
+                                     tax_level="species"))
+unfiltered_files<- merge(unfiltered_files, metadata[,c('cluster_id',"cluster_id2")], by = "cluster_id")
+unfiltered_files<- unfiltered_files %>%  group_by(filt,cluster_id2,superkingdom,genus,species ) %>% summarise(AdjustedBlast=sum(AdjustedBlast),RelCoverage=sum(RelCoverage))
+colnames(unfiltered_files)[2]="cluster_id"
+unfiltered_files$SAMPLE = unfiltered_files$cluster_id
+unfiltered_files<-unfiltered_files[unfiltered_files$AdjustedBlast>=1,]
+
+
+cofee_files <- merge(filtered_files, unfiltered_files, by = c("SAMPLE", "cluster_id", "superkingdom","genus","species"))
+cofee_files$rat <- cofee_files$AdjustedBlast.x/cofee_files$AdjustedBlast.y*100
+cofee_files <- cofee_files[cofee_files$rat > 0.01, ]
+
+
+#####correct for number of reads 
+metadata = metadata[,c('cluster_id2','cohort','disease_status','PE_adapter_trimmed_molecules')]
+metadata = metadata %>%  group_by(cohort,disease_status,cluster_id2) %>% summarise(PE_adapter_trimmed_molecules=sum(PE_adapter_trimmed_molecules))
+colnames(metadata)[3]="cluster_id"
+
+
+cofee_files <- merge(cofee_files[, c('cluster_id', 'superkingdom','genus', 'species', 'AdjustedBlast.x', 'rat')], metadata[, c('cluster_id', 'cohort', 'PE_adapter_trimmed_molecules',"disease_status")])
+cofee_files$MPM <- cofee_files$AdjustedBlast.x/cofee_files$PE_adapter_trimmed_molecules*1000000
+
+
+
+unfiltered_files <- merge(unfiltered_files[, c('cluster_id', 'superkingdom','genus', 'species', 'AdjustedBlast')], metadata[, c('cluster_id', 'cohort', 'PE_adapter_trimmed_molecules',"disease_status")])
+unfiltered_files$MPM <- unfiltered_files$AdjustedBlast/unfiltered_files$PE_adapter_trimmed_molecules*1000000
+
+unfiltered_files$filt <- "Unfiltered"
+
+colnames(cofee_files)[[5]]<-"AdjustedBlast"
+cofee_files$rat <- NULL
+cofee_files$filt <- "Filtered"
+main_df <- rbind(cofee_files, unfiltered_files)
+
+
+
+main_df <- main_df %>% group_by(cluster_id,filt, superkingdom, cohort, PE_adapter_trimmed_molecules,disease_status,genus) %>% summarize(AdjustedBlast=sum(AdjustedBlast), MPM=sum(MPM))
+
+#quick_taxids is a file containing contaminant genera and their tax id 
+contaminant_genera<-read_excel("tables/quick_taxids.xlsx")
+filtered_files<-main_df %>% filter(filt=="Filtered")
+unfiltered_files<-main_df %>% filter(filt=="Unfiltered")
+
+non_contaminants_filtered<- filtered_files[!(filtered_files$genus %in% contaminant_genera$tax),]
+non_contaminants_filtered$MPM<-0
+non_contaminants_unfiltered<-unfiltered_files[!(unfiltered_files$genus %in% contaminant_genera$tax),]
+non_contaminants_unfiltered$MPM<-0
+
+contaminants_filtered<- filtered_files[filtered_files$genus %in% contaminant_genera$tax,]
+contaminants_unfiltered<-unfiltered_files[unfiltered_files$genus %in% contaminant_genera$tax,]
+samples_without_genus<-contaminants_unfiltered[!(contaminants_unfiltered$cluster_id %in% contaminants_filtered$cluster_id),]
+samples_without_genus$filt<-"Filtered"
+samples_without_genus$MPM<-0
+
+contaminants<-rbind(non_contaminants_filtered,non_contaminants_unfiltered,contaminants_filtered,contaminants_unfiltered,samples_without_genus)
+
+contaminants<- contaminants %>% select(cluster_id,cohort,filt,genus, MPM)
+contaminants<-contaminants %>% left_join(contaminant_genera, by=c("genus"="tax"))
+contaminants$filt<-factor(contaminants$filt, levels = c("Unfiltered","Filtered"))
+contaminants$cohort<-factor(contaminants$cohort, levels = c("Plasma-COVID19",  "Plasma-IBD","Plasma-TB","Plasma-Sepsis","Urine-UTI","Urine-Stents"))
+
+
+
+contaminants %>% group_by(cohort,filt,cluster_id) %>% summarize(MPM=sum(MPM)) %>% 
+  ggplot(.,aes(cohort,MPM,color=filt)) + geom_boxplot(lwd=0.5)+
+  geom_point(position = position_dodge(width = 0.75), aes(fill=filt))+theme_classic()+scale_color_manual(values=c("#B2182B", "#2166AC"))+
+  ylab("log10 MPM")+
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 6),
+    axis.title.y = element_blank(),
+    axis.text.y = element_text(size = 6),
+    #axis.text.y = element_text(size=6),
+    legend.position = "none",
+    strip.text = element_text(size = 6, colour = "BLACK")
+  )+stat_n_text()+scale_y_continuous(trans="pseudo_log", breaks = c(0,100,10000,20000,40000))
+
+
+
+
+contaminants = contaminants %>% mutate(condition = case_when(disease_status == "No UTI" ~ "No UTI",disease_status == "UTI"~"UTI", cohort =="Plasma-IBD"~"Plasma-IBD",
+                                                             cohort == "Plasma-COVID19"~"Plasma-COVID19", cohort=="Plasma-TB"~"Plasma-TB", cohort == "Plasma-Sepsis"~"Plasma-Sepsis",cohort =="Urine-Stents"~"Urine-Stents"))
+contaminants$condition = factor(contaminants$condition, levels = c("Plasma-COVID19","Plasma-IBD", "Plasma-TB","Plasma-Sepsis", "UTI","No UTI","Urine-Stents" ))
+
+
+contaminants %>% group_by(condition,filt,cluster_id) %>% summarize(MPM=sum(MPM)) %>% 
+  ggplot(.,aes(condition,(MPM),color=filt)) + geom_boxplot(lwd=0.5, outlier.size = 0.3)+
+  geom_point(position = position_dodge(width = 0.75), aes(fill=filt), alpha=0.75,size=0.3)+theme_classic()+scale_color_manual(values=c("#B2182B", "#2166AC"))+
+  ylab("log10 MPM")+
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 6),
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    #axis.text.y = element_text(size=6),
+    legend.position = "none",
+    strip.text = element_text(size = 6, colour = "BLACK")
+  )+stat_n_text()+scale_y_continuous(trans="pseudo_log", breaks = c(0,100,10000,40000))
+
+
+```
+
+
+
+
+
+
+Code for plotting figure 2c and 2d 
+```{r}
+rm(list=ls())
+library(xlsx)
+library(readxl)
+library(EnvStats)
+library(data.table)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(EnvStats)
+library(vegan)
+library(ggpubr)
+# Funcions -----
+get_grammy <- function(filename, filt, tax_level){
+ # print(filename)
+  df <- fread(filename, data.table = FALSE)
+  df <- df[, c('SAMPLE', tax_level, 'AdjustedBlast', 'RelCoverage', 'superkingdom', "genus")]
+  form <- as.formula(paste(c(".~", "SAMPLE", "superkingdom","genus", tax_level), collapse = "+"))
+  df <- aggregate(form, df, sum)
+  cluster_id <- df$SAMPLE[1]
+  df$cluster_id <- cluster_id
+  df$filt <- filt
+  return(df)
+}
+
+# Load tables ------
+metadata <- fread('tables/metadata.csv', na.strings = c("NA", ""))
+
+
+filtered_files <- rbindlist(lapply(X = metadata$refiltered_grammy_path, 
+                                   FUN = get_grammy,
+                                   filt = "refiltered",
+                                   tax_level="species"))
+filtered_files<- merge(filtered_files, metadata[,c('cluster_id',"cluster_id2")], by = "cluster_id")
+filtered_files<- filtered_files %>%  group_by(filt,cluster_id2,superkingdom,genus,species ) %>% summarise(AdjustedBlast=sum(AdjustedBlast),RelCoverage=sum(RelCoverage))
+colnames(filtered_files)[2]="cluster_id"
+filtered_files$SAMPLE = filtered_files$cluster_id
+filtered_files<-filtered_files[filtered_files$AdjustedBlast>=1,]
+
+metadata <- fread('tables/metadata.csv', na.strings = c("NA", ""))
+
+
+metadata = metadata[metadata$received_stool_sample!="No",]
+metadata <- metadata[metadata$biofluid=="urine" | metadata$biofluid=="plasma" , ]
+unfiltered_files <- rbindlist(lapply(X = metadata$unfiltered_grammy_path, 
+                                     FUN = get_grammy,
+                                     filt = "unfiltered",
+                                     tax_level="species"))
+unfiltered_files<- merge(unfiltered_files, metadata[,c('cluster_id',"cluster_id2")], by = "cluster_id")
+unfiltered_files<- unfiltered_files %>%  group_by(filt,cluster_id2,superkingdom,genus,species ) %>% summarise(AdjustedBlast=sum(AdjustedBlast),RelCoverage=sum(RelCoverage))
+colnames(unfiltered_files)[2]="cluster_id"
+unfiltered_files$SAMPLE = unfiltered_files$cluster_id
+unfiltered_files<-unfiltered_files[unfiltered_files$AdjustedBlast>=1,]
+
+
+cofee_files <- merge(filtered_files, unfiltered_files, by = c("SAMPLE", "cluster_id", "superkingdom","genus","species"))
+cofee_files$rat <- cofee_files$AdjustedBlast.x/cofee_files$AdjustedBlast.y*100
+cofee_files <- cofee_files[cofee_files$rat > 0.01, ]
+
+
+#####correct for number of reads 
+metadata = metadata[,c('cluster_id2','cohort','disease_status','PE_adapter_trimmed_molecules')]
+metadata = metadata %>%  group_by(cohort,disease_status,cluster_id2) %>% summarise(PE_adapter_trimmed_molecules=sum(PE_adapter_trimmed_molecules))
+colnames(metadata)[3]="cluster_id"
+
+
+
+
+
+
+
+cofee_files <- merge(cofee_files[, c('cluster_id', 'superkingdom','genus', 'species', 'AdjustedBlast.x', 'rat')], metadata[, c('cluster_id', 'cohort', 'PE_adapter_trimmed_molecules',"disease_status")])
+cofee_files$MPM <- cofee_files$AdjustedBlast.x/cofee_files$PE_adapter_trimmed_molecules*1000000
+
+
+
+unfiltered_files <- merge(unfiltered_files[, c('cluster_id', 'superkingdom','genus', 'species', 'AdjustedBlast')], metadata[, c('cluster_id', 'cohort', 'PE_adapter_trimmed_molecules',"disease_status")])
+unfiltered_files$MPM <- unfiltered_files$AdjustedBlast/unfiltered_files$PE_adapter_trimmed_molecules*1000000
+
+unfiltered_files$filt <- "Unfiltered"
+
+colnames(cofee_files)[[5]]<-"AdjustedBlast"
+cofee_files$rat <- NULL
+cofee_files$filt <- "Filtered"
+main_df <- rbind(cofee_files, unfiltered_files)
+
+
+filtered_files<-main_df %>% filter(filt=="Filtered")
+unfiltered_files<-main_df %>% filter(filt=="Unfiltered")
+```
+
+
+
+
+
+
+```{r}
+
+
+metadata1 <- fread('tables/metadata.csv', na.strings = c("NA", ""))
+metadata1 = metadata1[metadata1$received_stool_sample!="No",]
+metadata1 <- metadata1[metadata1$biofluid=="urine" | metadata1$biofluid=="plasma", ]
+
+
+metadata1 = metadata1[,c("cluster_id","biofluid","researcher","Sequence_order")]
+
+metadata = left_join(metadata, metadata1, by="cluster_id")
+
+
+
+
+
+
+metadata = metadata %>% mutate(condition = case_when(disease_status == "No UTI" ~ "No UTI",disease_status == "UTI"~"UTI", cohort =="Plasma-IBD"~"Plasma-IBD",cohort == "Plasma-COVID19"~"Plasma-COVID19", cohort=="Plasma-TB"~"Plasma-TB", cohort=="Plasma-Sepsis"~"Plasma-Sepsis",cohort =="Urine-Stents"~"Urine-Stents") )
+metadata$condition = factor(metadata$condition, levels = c("Plasma-COVID19","Plasma-IBD", "Plasma-TB","Plasma-Sepsis", "UTI","No UTI","Urine-Stents" ))
+metadata<- metadata %>% arrange(biofluid,condition,cohort,researcher,desc(Sequence_order))
+unfiltered_files<-unfiltered_files %>% dplyr::select(cluster_id,species,MPM)
+wide_unfiltered<- unfiltered_files %>% spread(key=cluster_id, value=MPM, fill=0)
+transposed_unfiltered<-t(wide_unfiltered[,-1])
+bray_unfiltered<-as.matrix(vegdist(transposed_unfiltered, method = "bray", ))
+#pheatmap::pheatmap(bray_unfiltered, annotation_names_row  = TRUE, annotation_names_col = TRUE, annotation_col = wide_unfiltered$cluster_id)
+
+metadata<-metadata[metadata$cluster_id %in% row.names(bray_unfiltered),]
+
+bray_unfiltered<-bray_unfiltered[,metadata$cluster_id]
+reordered_unfiltered<-bray_unfiltered[metadata$cluster_id,]
+
+sample_names<-rownames(as.data.frame(reordered_unfiltered))
+sample_names<-as.data.frame(sample_names)
+combined_df<-left_join(sample_names,metadata, by=c("sample_names"="cluster_id"))
+
+
+color_palette <-c("#e54c44","#6ded88","#732d9f","#01a03f","#ff85ee","#287500","#705cd2","#efd245","#0f80f8",
+"#e2a423","#310d67","#afe382","#6e006a","#01a665","#d944a6","#6c8400","#a493ff","#e98429","#0175ce","#fdcd69",
+"#002965","#a9e395","#f14793","#006630","#ff8bc0","#525f00","#7eacff","#b0320a","#004589","#fd7547","#3b1b55","#ffaf73","#ab7ec0","#a05500","#e1b6ff","#654700","#a60030","#ff7d6d","#6c0200","#800030")
+
+
+
+colors<-data.frame(Sequence_order = unique(combined_df$Sequence_order),col_seq =sample(color_palette,length(unique(combined_df$Sequence_order)),replace = FALSE))
+combined_df<-left_join(combined_df,colors,by="Sequence_order")
+a<-combined_df$col_seq
+
+
+
+
+####------
+ggplot(reshape2::melt(reordered_unfiltered), aes(Var1,Var2, fill=value)) + geom_tile() + theme_bw()+
+  scale_fill_viridis_c(direction = -1, name="Bray Curtis Dissimilarity")+ theme(
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(size=6,colour =a),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank()
+  )
+#+ ggtitle("Batch Effects-arranged by Researcher and Sequencing order")
+
+###----
+main_plot<-ggplot(reshape2::melt(reordered_unfiltered), aes(Var1,Var2, fill=value)) + geom_tile() + theme_bw()+
+   theme(
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks = element_blank(),
+    legend.title = element_text(size=8),
+    legend.text = element_text(size=6),
+    legend.key.height = unit(3, "pt"),
+    legend.key.width = unit(15,"pt"),
+    legend.position = "top"
+  )+ scale_fill_gradient(low="darkblue",  high="lightgrey")
+
+combined_df$sample_names<-factor(combined_df$sample_names, levels = combined_df$sample_names)
+
+seq_order_df1<-ggplot(combined_df, aes(x=sample_names,y=0.25, fill=as.factor(Sequence_order)))+geom_tile(height=0.5, fill=a)+theme_bw()+theme(
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank(),
+   axis.text.y = element_blank(),
+  panel.background = element_blank(),
+  panel.border = element_blank(),
+  axis.ticks = element_blank(),
+  panel.grid = element_blank(),
+   axis.title.y = element_blank())+scale_fill_manual(values=a)
+
+seq_order_df2<-ggplot(combined_df, aes(x=sample_names,y=0.25, fill=as.factor(Sequence_order)))+geom_tile(height=0.5)+theme_bw()+theme(
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank(),
+   axis.text.y = element_blank(),
+  panel.background = element_blank(),
+  panel.border = element_blank(),
+  axis.ticks = element_blank(),
+  panel.grid = element_blank(),
+   axis.title.y = element_blank())
+
+researcher_df<-ggplot(combined_df, aes(x=sample_names,y=0.25, fill=researcher))+geom_tile(height=0.1)+ theme_bw()+ scale_fill_viridis_d()+ theme(
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank(),
+  axis.text.y = element_blank(),
+  panel.background = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  axis.ticks = element_blank(),
+  axis.title.y = element_blank())
+
+
+condition_df<- ggplot(combined_df, aes(x=sample_names,y=0.25, fill=condition))+geom_tile(height=0.1)+ theme_bw()+ scale_fill_viridis_d()+ theme(
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank(),
+  axis.text.y = element_blank(),
+  panel.background = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  axis.ticks = element_blank(),
+  axis.title.y = element_blank())
+
+cohort_df<-ggplot(combined_df, aes(x=sample_names,y=0.25, fill=cohort))+geom_tile(height=0.1)+ theme_bw()+ scale_fill_viridis_d()+ theme(
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank(),
+  axis.text.y = element_blank(),
+  panel.background = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  axis.ticks = element_blank(),
+  axis.title.y = element_blank())
+
+biofluid_df<-ggplot(combined_df, aes(x=sample_names,y=0.25, fill=biofluid))+geom_tile(height=0.1)+ theme_bw()+ scale_fill_viridis_d()+ theme(
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank(),
+  axis.text.y = element_blank(),
+  panel.background = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  axis.ticks = element_blank(),
+  axis.title.y = element_blank())
+ggarrange(main_plot, seq_order_df1, seq_order_df2, researcher_df,condition_df, cohort_df,biofluid_df , heights = c(20, 4,4,4,4,4,4),
+          ncol =1, nrow = 7, common.legend = TRUE)
+#ggsave("figures/temporary_batch_effects_unfiltered.pdf",  width=6 , height=7, units="cm")
+
+```
+
+
+
+
+
+
+```{r}
+
+library(vegan)
+library(ggpubr)
+
+
+
+metadata = metadata %>% mutate(condition = case_when(disease_status == "No UTI" ~ "No UTI",disease_status == "UTI"~"UTI", cohort =="Plasma-IBD"~"Plasma-IBD",cohort == "Plasma-COVID19"~"Plasma-COVID19", cohort=="Plasma-TB"~"Plasma-TB", cohort=="Plasma-Sepsis"~"Plasma-Sepsis",cohort =="Urine-Stents"~"Urine-Stents") )
+metadata$condition = factor(metadata$condition, levels = c("Plasma-COVID19","Plasma-IBD", "Plasma-TB","Plasma-Sepsis", "UTI","No UTI","Urine-Stents" ))
+metadata<- metadata %>% arrange(biofluid,condition,cohort,researcher,desc(Sequence_order))
+filtered_files<-filtered_files %>% dplyr::select(cluster_id,species,MPM)
+wide_filtered<- filtered_files %>% spread(key=cluster_id, value=MPM, fill=0)
+transposed_filtered<-t(wide_filtered[,-1])
+bray_filtered<-as.matrix(vegdist(transposed_filtered, method = "bray", ))
+
+
+metadata<-metadata[metadata$cluster_id %in% row.names(bray_filtered),]
+
+bray_filtered<-bray_filtered[,metadata$cluster_id]
+reordered_filtered<-bray_filtered[metadata$cluster_id,]
+
+sample_names<-rownames(as.data.frame(reordered_filtered))
+sample_names<-as.data.frame(sample_names)
+combined_df<-left_join(sample_names,metadata, by=c("sample_names"="cluster_id"))
+
+
+color_palette <-c("#e54c44","#6ded88","#732d9f","#01a03f","#ff85ee","#287500","#705cd2","#efd245","#0f80f8",
+"#e2a423","#310d67","#afe382","#6e006a","#01a665","#d944a6","#6c8400","#a493ff","#e98429","#0175ce","#fdcd69",
+"#002965","#a9e395","#f14793","#006630","#ff8bc0","#525f00","#7eacff","#b0320a","#004589","#fd7547","#3b1b55","#ffaf73","#ab7ec0","#a05500","#e1b6ff","#654700","#a60030","#ff7d6d","#6c0200","#800030")
+
+
+
+colors<-data.frame(Sequence_order = unique(combined_df$Sequence_order),col_seq =sample(color_palette,length(unique(combined_df$Sequence_order)),replace = FALSE))
+combined_df<-left_join(combined_df,colors,by="Sequence_order")
+a<-combined_df$col_seq
+
+
+
+
+####------
+ggplot(reshape2::melt(reordered_filtered), aes(Var1,Var2, fill=value)) + geom_tile() + theme_bw()+
+  scale_fill_viridis_c(direction = -1, name="Bray Curtis Dissimilarity")+ theme(
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(size=6,colour =a),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank()
+  )
+#+ ggtitle("Batch Effects-arranged by Researcher and Sequencing order")
+
+###----
+main_plot<-ggplot(reshape2::melt(reordered_filtered), aes(Var1,Var2, fill=value)) + geom_tile() + theme_bw()+
+  theme(
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks = element_blank(),
+    legend.title = element_text(size=8),
+    legend.text = element_text(size=6),
+    legend.key.height = unit(3, "pt"),
+    legend.key.width = unit(15,"pt"),
+    legend.position = "top"
+  )+ scale_fill_gradient(low="darkblue",  high="lightgrey")
+
+
+combined_df$sample_names<-factor(combined_df$sample_names, levels = combined_df$sample_names)
+
+seq_order_df1<-ggplot(combined_df, aes(x=sample_names,y=0.25, fill=as.factor(Sequence_order)))+geom_tile(height=0.5, fill=a)+theme_bw()+theme(
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank(),
+  axis.text.y = element_blank(),
+  panel.background = element_blank(),
+  panel.border = element_blank(),
+  axis.ticks = element_blank(),
+  panel.grid = element_blank(),
+  axis.title.y = element_blank())+scale_fill_manual(values=a)
+
+seq_order_df2<-ggplot(combined_df, aes(x=sample_names,y=0.25, fill=as.factor(Sequence_order)))+geom_tile(height=0.5)+theme_bw()+theme(
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank(),
+  axis.text.y = element_blank(),
+  panel.background = element_blank(),
+  panel.border = element_blank(),
+  axis.ticks = element_blank(),
+  panel.grid = element_blank(),
+  axis.title.y = element_blank())
+
+researcher_df<-ggplot(combined_df, aes(x=sample_names,y=0.25, fill=researcher))+geom_tile(height=0.1)+ theme_bw()+ scale_fill_viridis_d()+ theme(
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank(),
+  axis.text.y = element_blank(),
+  panel.background = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  axis.ticks = element_blank(),
+  axis.title.y = element_blank())
+
+
+condition_df<- ggplot(combined_df, aes(x=sample_names,y=0.25, fill=condition))+geom_tile(height=0.1)+ theme_bw()+ scale_fill_viridis_d()+ theme(
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank(),
+  axis.text.y = element_blank(),
+  panel.background = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  axis.ticks = element_blank(),
+  axis.title.y = element_blank())
+
+cohort_df<-ggplot(combined_df, aes(x=sample_names,y=0.25, fill=cohort))+geom_tile(height=0.1)+ theme_bw()+ scale_fill_viridis_d()+ theme(
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank(),
+  axis.text.y = element_blank(),
+  panel.background = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  axis.ticks = element_blank(),
+  axis.title.y = element_blank())
+
+biofluid_df<-ggplot(combined_df, aes(x=sample_names,y=0.25, fill=biofluid))+geom_tile(height=0.1)+ theme_bw()+ scale_fill_viridis_d()+ theme(
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank(),
+  axis.text.y = element_blank(),
+  panel.background = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  axis.ticks = element_blank(),
+  axis.title.y = element_blank())
+ggarrange(main_plot, seq_order_df1, seq_order_df2, researcher_df,condition_df, cohort_df,biofluid_df , heights = c(20, 4,4,4,4,4,4),
+          ncol =1, nrow = 7, common.legend = TRUE)
+
+
+
+
+
+
+
+```
+
