@@ -1,6 +1,6 @@
 # SIFTseq pipeline
 
-**Written By:** Alexandre Cheng, Omary Mzava , Adriene 
+**Written By:** Alexandre Cheng, Omary Mzava , Adrienne Chang
 
 **Title:** A metagenomic DNA sequencing assay that is robust against environmental DNA contamination
  
