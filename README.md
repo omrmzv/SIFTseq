@@ -1,5 +1,7 @@
 # SIFTseq pipeline
 
+**Written By:** Alexandre Cheng, Omary Mzava , Adriene 
+
 **Title:** A metagenomic DNA sequencing assay that is robust against environmental DNA contamination
  
 **Contents:** This repository contains the Coffee-seq pipeline with necessary scripts for removing environmental DNA contaminants. 
