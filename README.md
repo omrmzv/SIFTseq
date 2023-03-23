@@ -1,6 +1,6 @@
 # SIFT-seq pipeline
 
-**Written By:** Alexandre Cheng, Omary Mzava and Adrienne Chang from [De Vlaminck Lab](https://devlaminck.bme.cornell.edu/) at Cornell University, Ithaca, New York.
+**This code was written by Alexandre Pellan Cheng, Omary Mzava  and Adrienne Chang from [De Vlaminck Lab](https://devlaminck.bme.cornell.edu/) at Cornell University, Ithaca, New York.**
 
 
 
