@@ -1,6 +1,6 @@
 # SIFT-seq pipeline
 
-**Written By:** Alexandre Cheng, Omary Mzava , Adrienne Chang
+**Written By:** Alexandre Cheng, Omary Mzava and Adrienne Chang from [De Vlaminck Lab](https://devlaminck.bme.cornell.edu/) at Cornell University, Ithaca, New York
 
 **Title:** A metagenomic DNA sequencing assay that is robust against environmental DNA contamination
  
@@ -12,3 +12,15 @@ We tag DNA by bisulfite salt-induced conversion of unmethylated cytosines to ura
 
 
 ![github](https://user-images.githubusercontent.com/62556613/173901368-d85e75fb-78f8-43b1-b8d1-5300c706442d.png)
+
+ ## **Quick Start**
+ - clone the SIFT-seq pipeline
+ - Set the paths in the config/config.yaml to point to your software directory
+ - Download and prepare microbe reference database
+ - Running the pipeline can be done by the following line of code
+ 
+ ```
+ snakemake -j {number of cores}
+ ```
+ 
+ 
