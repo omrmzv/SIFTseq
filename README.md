@@ -1,8 +1,10 @@
 # SIFT-seq pipeline
 
-**Written By:** Alexandre Cheng, Omary Mzava and Adrienne Chang from [De Vlaminck Lab](https://devlaminck.bme.cornell.edu/) at Cornell University, Ithaca, New York
+**Written By:** Alexandre Cheng, Omary Mzava and Adrienne Chang from [De Vlaminck Lab](https://devlaminck.bme.cornell.edu/) at Cornell University, Ithaca, New York.
 
-**Title:** A metagenomic DNA sequencing assay that is robust against environmental DNA contamination
+
+
+**Title:** [A metagenomic DNA sequencing assay that is robust against environmental DNA contamination](https://doi.org/10.1038/s41467-022-31654-0)
  
 **Contents:** This repository contains the SIFT-seq pipeline with necessary scripts for removing environmental DNA contaminants. 
 We also include R scripts required to analyze the processed datasets. 
